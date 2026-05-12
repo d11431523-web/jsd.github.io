@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YouBike 2.0 即時定位地圖</title>
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: 'Noto Sans TC', sans-serif; }
+        #map { height: 60vh; width: 100%; border-radius: 2rem; z-index: 1; }
+        .custom-popup .leaflet-popup-content-wrapper {
+            border-radius: 1.5rem;
+            padding: 0.5rem;
+        }
+        .user-location-icon {
+            background-color: #3b82f6;
+            border: 3px solid white;
+            border-radius: 50%;
+            box-shadow: 0 0 10px rgba(0,0,0,0.2);
+        }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+    <div class="max-w-6xl mx-auto p-4 md:p-8">
+        <!-- 頂部面板 -->
+        <div class="bg-white rounded-[2.5rem] shadow-sm border border-slate-200 p-6 md:p-8 mb-6 flex flex-col md:flex-row items-center justify-between gap-4">
+            <div class="text-center md:text-left">
+                <h1 class="text-2xl font-black text-slate-800 tracking-tight">YouBike 2.0 探索地圖</h1>
+                <p class="text-slate-400 text-sm font-medium">基於目前定位搜尋鄰近站點</p>
+            </div>
+            <div class="flex gap-2">
+                <button id="locateBtn" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-2xl font-bold flex items-center gap-2 transition-all active:scale-95">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" stroke-width="2"></path><path d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" stroke-width="2"></path></svg>
+                    <span>我的位置</span>
+                </button>
+                <button id="refreshBtn" class="bg-slate-900 hover:bg-black text-white px-6 py-3 rounded-2xl font-bold flex items-center gap-2 transition-all active:scale-95">
+                    <svg id="refreshIcon" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                    <span>重新整理</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- 地圖容器 -->
+        <div class="relative mb-8 shadow-2xl rounded-[2.5rem] overflow-hidden bg-white">
+            <div id="map"></div>
+            <!-- 資訊疊層 -->
+            <div id="loadingStatus" class="absolute inset-0 bg-white/80 z-[1000] flex items-center justify-center hidden">
+                <div class="text-center">
+                    <div class="w-12 h-12 border-4 border-slate-200 border-t-blue-600 rounded-full animate-spin mx-auto mb-4"></div>
+                    <p class="text-slate-600 font-bold tracking-widest">同步最新站點...</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- 附近站點列表 -->
+        <div class="mb-4 flex items-center justify-between px-2">
+            <h2 class="text-xl font-black text-slate-700 uppercase tracking-tighter">鄰近站點推薦</h2>
+            <span id="dataTime" class="text-xs text-slate-400 font-bold">同步時間: --:--</span>
+        </div>
+        
+        <div id="nearList" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <!-- 站點卡片將動態插入 -->
+        </div>
+    </div>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        const API_URL = 'https://tcgbusfs.blob.core.windows.net/dotapp/youbike/v2/youbike_immediate.json';
+        let map, userMarker, markersLayer;
+        let userCoords = [25.04085, 121.5116]; // 預設：台北車站
+
+        // 初始化地圖
+        function initMap() {
+            map = L.map('map').setView(userCoords, 15);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap contributors'
+            }).addTo(map);
+            markersLayer = L.layerGroup().addTo(map);
+        }
+
+        // 計算距離 (Haversine formula)
+        function getDistance(lat1, lon1, lat2, lon2) {
+            if (lat1 === undefined || lon1 === undefined || lat2 === undefined || lon2 === undefined) return Infinity;
+            const R = 6371; // km
+            const dLat = (lat2 - lat1) * Math.PI / 180;
+            const dLon = (lon2 - lon1) * Math.PI / 180;
+            const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon/2) * Math.sin(dLon/2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+            return R * c * 1000; // 返回公尺
+        }
+
+        // 取得定位
+        function getUserLocation() {
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    (pos) => {
+                        userCoords = [pos.coords.latitude, pos.coords.longitude];
+                        map.setView(userCoords, 16);
+                        updateUserMarker();
+                        fetchData();
+                    },
+                    (err) => {
+                        console.warn("定位失敗:", err.message);
+                        updateUserMarker();
+                        fetchData();
+                    }
+                );
+            } else {
+                updateUserMarker();
+                fetchData();
+            }
+        }
+
+        function updateUserMarker() {
+            if (userMarker) map.removeLayer(userMarker);
+            const icon = L.divIcon({ className: 'user-location-icon', iconSize: [16, 16] });
+            userMarker = L.marker(userCoords, { icon }).addTo(map).bindPopup("<b>您的目前位置</b>").openPopup();
+        }
+
+        // 取得數據並渲染
+        async function fetchData() {
+            const loading = document.getElementById('loadingStatus');
+            const icon = document.getElementById('refreshIcon');
+            loading.classList.remove('hidden');
+            icon.classList.add('animate-spin');
+
+            try {
+                const res = await fetch(API_URL);
+                const data = await res.json();
+                
+                // 計算每個站點距離使用者的距離，增加對 lat/lng 命名不同的容錯
+                const stationsWithDist = data.map(s => {
+                    const sLat = Number(s.latitude || s.lat);
+                    const sLng = Number(s.longitude || s.lng);
+                    return {
+                        ...s,
+                        computedLat: sLat,
+                        computedLng: sLng,
+                        dist: getDistance(userCoords[0], userCoords[1], sLat, sLng)
+                    };
+                }).filter(s => !isNaN(s.computedLat) && !isNaN(s.computedLng)); // 過濾掉座標無效的站點
+
+                // 排序並取前 50 個顯示在地圖上
+                stationsWithDist.sort((a, b) => a.dist - b.dist);
+                
+                renderMarkers(stationsWithDist.slice(0, 50));
+                renderList(stationsWithDist.slice(0, 6));
+                document.getElementById('dataTime').innerText = `同步時間: ${new Date().toLocaleTimeString()}`;
+            } catch (err) {
+                console.error("資料讀取錯誤:", err);
+            } finally {
+                loading.classList.add('hidden');
+                icon.classList.remove('animate-spin');
+            }
+        }
+
+        function renderMarkers(stations) {
+            markersLayer.clearLayers();
+            stations.forEach(s => {
+                const available = Number(s.available_rent_bikes || s.sbi || 0);
+                const returnSlots = Number(s.available_return_bikes || s.available_return_slots || s.bemp || 0);
+                const color = available > 5 ? '#10b981' : (available > 0 ? '#f59e0b' : '#ef4444');
+                
+                // 確保座標存在才繪製
+                if (s.computedLat && s.computedLng) {
+                    const marker = L.circleMarker([s.computedLat, s.computedLng], {
+                        radius: 8,
+                        fillColor: color,
+                        color: "#fff",
+                        weight: 2,
+                        opacity: 1,
+                        fillOpacity: 0.8
+                    });
+
+                    const popupContent = `
+                        <div class="custom-popup p-2">
+                            <h4 class="font-black text-slate-800 text-lg">${s.sna.replace('YouBike2.0_', '')}</h4>
+                            <p class="text-slate-400 text-xs mb-3">${s.ar}</p>
+                            <div class="grid grid-cols-2 gap-2">
+                                <div class="bg-green-50 p-2 rounded-xl text-center">
+                                    <span class="block text-[8px] font-bold text-green-600">可借車輛</span>
+                                    <span class="text-xl font-black text-green-700">${available}</span>
+                                </div>
+                                <div class="bg-blue-50 p-2 rounded-xl text-center">
+                                    <span class="block text-[8px] font-bold text-blue-600">可還空位</span>
+                                    <span class="text-xl font-black text-blue-700">${returnSlots}</span>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                    marker.bindPopup(popupContent);
+                    markersLayer.addLayer(marker);
+                }
+            });
+        }
+
+        function renderList(stations) {
+            const container = document.getElementById('nearList');
+            container.innerHTML = '';
+            stations.forEach(s => {
+                const available = Number(s.available_rent_bikes || s.sbi || 0);
+                const returnSlots = Number(s.available_return_bikes || s.available_return_slots || s.bemp || 0);
+                const quantity = Number(s.Quantity || s.tot || 0);
+                const updateTime = s.mday ? `${s.mday.slice(8,10)}:${s.mday.slice(10,12)}` : "--:--";
+
+                const card = document.createElement('div');
+                card.className = "bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100 transition-all hover:shadow-md cursor-pointer";
+                card.onclick = () => map.setView([s.computedLat, s.computedLng], 18);
+                
+                card.innerHTML = `
+                    <div class="flex justify-between items-start mb-4">
+                        <span class="px-3 py-1 bg-slate-100 text-slate-500 text-[10px] font-black rounded-lg uppercase">距離 ${s.dist === Infinity ? '未知' : Math.round(s.dist) + 'm'}</span>
+                        <span class="text-[10px] text-slate-300 font-bold">${updateTime}</span>
+                    </div>
+                    <h3 class="font-black text-slate-800 text-lg mb-1">${s.sna.replace('YouBike2.0_', '')}</h3>
+                    <p class="text-slate-400 text-xs mb-6 truncate">${s.ar}</p>
+                    
+                    <div class="grid grid-cols-2 gap-3 mb-4">
+                        <div class="bg-emerald-50 rounded-2xl p-3 text-center">
+                            <p class="text-[9px] font-bold text-emerald-600 mb-1">可借車輛</p>
+                            <p class="text-2xl font-black text-emerald-700">${available}</p>
+                        </div>
+                        <div class="bg-blue-50 rounded-2xl p-3 text-center">
+                            <p class="text-[9px] font-bold text-blue-600 mb-1">可還空位</p>
+                            <p class="text-2xl font-black text-blue-700">${returnSlots}</p>
+                        </div>
+                    </div>
+                    <div class="bg-amber-50 rounded-xl p-2 text-center text-amber-700 text-xs font-bold">
+                        總格數 (Qty): ${quantity}
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        // 初始化
+        window.onload = () => {
+            initMap();
+            getUserLocation();
+        };
+
+        document.getElementById('refreshBtn').addEventListener('click', fetchData);
+        document.getElementById('locateBtn').addEventListener('click', getUserLocation);
+    </script>
+</body>
+</html>
