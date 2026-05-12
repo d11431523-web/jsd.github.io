@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>個人作品集導覽</title>
+    <!-- 引入 Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary-color: #2d3436;
+            --accent-color: #0984e3;
+            --bg-gradient: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            --card-bg: rgba(255, 255, 255, 0.8);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Noto+Sans+TC', sans-serif;
+            background: var(--bg-gradient);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: var(--primary-color);
+        }
+
+        .container {
+            text-align: center;
+            padding: 2rem;
+            width: 100%;
+            max-width: 600px;
+        }
+
+        header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 0.5rem;
+            font-weight: 700;
+            letter-spacing: 2px;
+        }
+
+        header p {
+            font-size: 1.1rem;
+            opacity: 0.7;
+            margin-bottom: 3rem;
+        }
+
+        .nav-links {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.5rem;
+        }
+
+        .card {
+            background: var(--card-bg);
+            backdrop-filter: blur(10px);
+            padding: 2.5rem 1.5rem;
+            border-radius: 20px;
+            text-decoration: none;
+            color: inherit;
+            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .card:hover {
+            transform: translateY(-10px);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            background: rgba(255, 255, 255, 0.95);
+        }
+
+        .icon {
+            font-size: 3rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .card h2 {
+            font-size: 1.25rem;
+            font-weight: 400;
+        }
+
+        .card span {
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--accent-color);
+            font-weight: 700;
+        }
+
+        /* 響應式設計 */
+        @media (max-width: 480px) {
+            .nav-links {
+                grid-template-columns: 1fr;
+            }
+            header h1 {
+                font-size: 2rem;
+            }
+        }
+
+        /* 客製化彈窗樣式 */
+        #message-box {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #2d3436;
+            color: white;
+            padding: 12px 24px;
+            border-radius: 50px;
+            display: none;
+            animation: fadeIn 0.3s ease;
+            z-index: 1000;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; bottom: 0; }
+            to { opacity: 1; bottom: 20px; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <header>
+            <h1>探索</h1>
+            <p>請選擇您想瀏覽的主題</p>
+        </header>
+
+        <nav class="nav-links">
+            <a href="photo.txt" class="card" id="link-photo">
+                <div class="icon">📷</div>
+                <h2>修圖</h2>
+                <span>Photo.txt</span>
+            </a>
+
+            <a href="bike.txt" class="card" id="link-bike">
+                <div class="icon">🚲</div>
+                <h2>單車</h2>
+                <span>Bike.txt</span>
+            </a>
+        </nav>
+    </div>
+
+    <div id="message-box"></div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const cards = document.querySelectorAll('.card');
+            const messageBox = document.getElementById('message-box');
+
+            // 增加點擊時的互動回饋
+            cards.forEach(card => {
+                card.addEventListener('click', (e) => {
+                    const title = card.querySelector('h2').innerText;
+                    showMessage(`正在前往：${title}...`);
+                });
+            });
+
+            function showMessage(text) {
+                messageBox.innerText = text;
+                messageBox.style.display = 'block';
+                
+                setTimeout(() => {
+                    messageBox.style.display = 'none';
+                }, 2000);
+            }
+        });
+    </script>
+</body>
+</html>
