@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI 數位影像工作坊 V3.3</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        :root {
+            --bg-dark: #020617;
+            --panel-dark: #0f172a;
+            --accent: #3b82f6;
+        }
+
+        body {
+            background-color: var(--bg-dark);
+            color: #f1f5f9;
+            font-family: 'Inter', system-ui, sans-serif;
+            height: 100vh;
+            display: flex;
+            overflow: hidden;
+            margin: 0;
+            user-select: none;
+        }
+
+        .sidebar {
+            width: 360px;
+            background: var(--panel-dark);
+            border-right: 1px solid #1e293b;
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+            flex-shrink: 0;
+        }
+
+        .main-canvas-area {
+            flex-grow: 1;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background-color: #000;
+            background-image: 
+                linear-gradient(45deg, #111 25%, transparent 25%),
+                linear-gradient(-45deg, #111 25%, transparent 25%),
+                linear-gradient(45deg, transparent 75%, #111 75%),
+                linear-gradient(-45deg, transparent 75%, #111 75%);
+            background-size: 20px 20px;
+            background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
+        }
+
+        #canvas-wrapper {
+            position: relative;
+            max-width: 90%;
+            max-height: 90%;
+            box-shadow: 0 0 50px rgba(0,0,0,0.8);
+        }
+
+        canvas {
+            display: block;
+            max-width: 100%;
+            max-height: 100%;
+        }
+
+        #crop-overlay {
+            position: absolute;
+            border: 2px dashed #fff;
+            background: rgba(255, 255, 255, 0.1);
+            display: none;
+            pointer-events: none;
+            z-index: 60;
+        }
+
+        .tool-card {
+            background: #1e293b;
+            border-radius: 12px;
+            padding: 12px;
+            margin-bottom: 12px;
+            border: 1px solid #334155;
+        }
+
+        .btn-action {
+            background: #0f172a;
+            border: 1px solid #334155;
+            padding: 8px 4px;
+            border-radius: 6px;
+            font-size: 11px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s;
+            color: #94a3b8;
+        }
+
+        .btn-action:hover { border-color: var(--accent); color: white; }
+        .btn-action.active { background: var(--accent); color: white; border-color: white; }
+
+        .app-disabled { opacity: 0.3; pointer-events: none; filter: grayscale(1); }
+
+        #mode-info {
+            position: absolute;
+            top: 20px;
+            background: rgba(59, 130, 246, 0.9);
+            color: white;
+            padding: 8px 20px;
+            border-radius: 30px;
+            font-size: 13px;
+            font-weight: bold;
+            display: none;
+            z-index: 100;
+            backdrop-filter: blur(4px);
+        }
+
+        input[type="range"] {
+            width: 100%;
+            height: 6px;
+            background: #334155;
+            appearance: none;
+            accent-color: var(--accent);
+            border-radius: 3px;
+        }
+
+        .history-panel {
+            width: 220px;
+            background: var(--panel-dark);
+            border-left: 1px solid #1e293b;
+            display: flex;
+            flex-direction: column;
+            flex-shrink: 0;
+        }
+
+        .history-item {
+            padding: 8px 12px;
+            background: #0f172a;
+            border-radius: 6px;
+            font-size: 11px;
+            margin-bottom: 6px;
+            border-left: 3px solid #3b82f6;
+            color: #cbd5e1;
+        }
+    </style>
+</head>
+<body>
+
+    <aside class="sidebar p-4">
+        <div class="mb-4">
+            <h1 class="text-lg font-black text-white tracking-tighter italic">IMAGE WORKSHOP <span class="text-blue-500">V3.3</span></h1>
+            <p class="text-[9px] text-slate-500 font-bold uppercase mt-1">穩定的復原機制</p>
+        </div>
+
+        <div id="drop-zone" class="border-2 border-dashed border-slate-700 rounded-xl p-4 text-center cursor-pointer hover:border-blue-500 hover:bg-slate-800/30 mb-4 transition-all">
+            <p class="text-[10px] text-slate-400 font-bold uppercase">點擊或拖放影像</p>
+            <input type="file" id="upload-input" accept="image/*" class="hidden">
+        </div>
+
+        <div id="main-controls" class="app-disabled space-y-3">
+            <div class="tool-card">
+                <h3 class="text-[10px] font-black text-slate-500 uppercase mb-3 tracking-widest">影像基礎調整</h3>
+                <div class="space-y-3">
+                    <div>
+                        <div class="flex justify-between text-[10px] text-slate-400 mb-1"><span>亮度</span><span id="v-bright">100</span></div>
+                        <input type="range" id="adj-bright" min="0" max="200" value="100">
+                    </div>
+                    <div>
+                        <div class="flex justify-between text-[10px] text-slate-400 mb-1"><span>對比</span><span id="v-contrast">100</span></div>
+                        <input type="range" id="adj-contrast" min="0" max="200" value="100">
+                    </div>
+                    <div>
+                        <div class="flex justify-between text-[10px] text-slate-400 mb-1"><span>色溫</span><span id="v-temp">0</span></div>
+                        <input type="range" id="adj-temp" min="-50" max="50" value="0">
+                    </div>
+                </div>
+            </div>
+
+            <div class="tool-card">
+                <h3 class="text-[10px] font-black text-slate-500 uppercase mb-3 tracking-widest">進階工具</h3>
+                <div class="grid grid-cols-2 gap-2">
+                    <div class="btn-action" id="tool-chromakey" data-mode="chromakey">顏色去背</div>
+                    <div class="btn-action" id="tool-crop" data-mode="crop">裁切範圍</div>
+                </div>
+            </div>
+
+            <div class="tool-card">
+                <h3 class="text-[10px] font-black text-slate-500 uppercase mb-3 tracking-widest">文字浮水印</h3>
+                <div class="space-y-2">
+                    <input type="text" id="watermark-text" placeholder="輸入內容..." class="w-full bg-slate-900 border border-slate-700 rounded-md p-2 text-xs text-white">
+                    <div class="flex items-center gap-2 mb-1">
+                        <span class="text-[10px] text-slate-400 shrink-0">大小</span>
+                        <input type="range" id="brush-size" min="10" max="100" value="30">
+                    </div>
+                    <div class="flex gap-2">
+                        <input type="color" id="watermark-color" value="#ffffff" class="w-10 h-8 bg-transparent cursor-pointer">
+                        <button id="tool-watermark" class="flex-grow bg-slate-800 text-[11px] font-bold rounded-md hover:bg-slate-700">放置浮水印</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-2 pt-2">
+                <button id="btn-undo" class="bg-slate-700 py-3 rounded-lg text-xs font-bold hover:bg-slate-600">復原上一步</button>
+                <button id="btn-reset" class="bg-red-900/20 text-red-400 border border-red-900/30 rounded-lg text-xs font-bold hover:bg-red-900/40">全部重置</button>
+            </div>
+            <button id="btn-download" class="w-full py-3 bg-blue-600 text-white rounded-lg text-sm font-black tracking-widest hover:bg-blue-500">儲存影像</button>
+        </div>
+    </aside>
+
+    <main class="main-canvas-area" id="main-viewport">
+        <div id="mode-info"></div>
+        <div id="canvas-wrapper">
+            <div id="crop-overlay"></div>
+            <canvas id="main-canvas" style="display:none"></canvas>
+        </div>
+        <div id="empty-state" class="text-slate-700 font-black uppercase text-xs tracking-tighter">請上傳影像</div>
+        <div class="absolute bottom-4 text-[10px] text-slate-500 uppercase tracking-widest opacity-50">長按畫布對比原圖</div>
+    </main>
+
+    <aside class="history-panel p-3">
+        <div class="text-[10px] font-black text-slate-500 uppercase mb-3 border-b border-slate-800 pb-2 tracking-widest">操作紀錄</div>
+        <div id="history-log" class="overflow-y-auto flex-grow"></div>
+    </aside>
+
+    <script>
+        const canvas = document.getElementById('main-canvas');
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        const cropOverlay = document.getElementById('crop-overlay');
+        const modeInfo = document.getElementById('mode-info');
+        
+        let state = {
+            baseImg: null,
+            currentImg: null,
+            history: [], // 歷史紀錄棧
+            mode: 'idle',
+            isDrawing: false,
+            startX: 0, startY: 0,
+            settings: { brightness: 100, contrast: 100, temp: 0 },
+            brushSize: 30
+        };
+
+        function getCoord(e) {
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+            return {
+                realX: (e.clientX - rect.left) * scaleX,
+                realY: (e.clientY - rect.top) * scaleY,
+                cssX: e.clientX - rect.left,
+                cssY: e.clientY - rect.top
+            };
+        }
+
+        // 核心渲染：渲染傳入的影像物件
+        function render(imgObj) {
+            if (!imgObj) return;
+            canvas.width = imgObj.width;
+            canvas.height = imgObj.height;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(imgObj, 0, 0);
+        }
+
+        // 提交當前狀態到歷史紀錄
+        function commit(label) {
+            const dataUrl = canvas.toDataURL();
+            const img = new Image();
+            img.onload = () => {
+                state.currentImg = img;
+                state.history.push({ 
+                    label, 
+                    src: dataUrl, 
+                    settings: { ...state.settings } 
+                });
+                updateHistoryUI();
+            };
+            img.src = dataUrl;
+        }
+
+        function updateHistoryUI() {
+            const log = document.getElementById('history-log');
+            log.innerHTML = '';
+            state.history.slice().reverse().forEach(h => {
+                const item = document.createElement('div');
+                item.className = 'history-item';
+                item.innerText = h.label;
+                log.appendChild(item);
+            });
+        }
+
+        document.getElementById('upload-input').onchange = (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                const img = new Image();
+                img.onload = () => {
+                    state.baseImg = img;
+                    state.history = [];
+                    // 初始渲染
+                    render(img);
+                    // 初始 commit 作為第一筆紀錄
+                    commit("載入原始影像");
+                    document.getElementById('main-controls').classList.remove('app-disabled');
+                    document.getElementById('empty-state').style.display = 'none';
+                    canvas.style.display = 'block';
+                };
+                img.src = ev.target.result;
+            };
+            reader.readAsDataURL(file);
+        };
+
+        function setMode(newMode, infoText) {
+            document.querySelectorAll('.btn-action').forEach(b => b.classList.remove('active'));
+            if (state.mode === newMode) {
+                state.mode = 'idle';
+                modeInfo.style.display = 'none';
+                cropOverlay.style.display = 'none';
+            } else {
+                state.mode = newMode;
+                if (infoText) {
+                    modeInfo.innerText = infoText;
+                    modeInfo.style.display = 'block';
+                }
+                const activeBtn = document.querySelector(`[data-mode="${newMode}"]`) || document.getElementById('tool-watermark');
+                if (activeBtn) activeBtn.classList.add('active');
+            }
+        }
+
+        document.getElementById('tool-chromakey').onclick = () => setMode('chromakey', '去背模式：點擊想要移除的顏色');
+        document.getElementById('tool-crop').onclick = () => setMode('crop', '裁切模式：拖曳範圍並釋放');
+        document.getElementById('tool-watermark').onclick = () => setMode('watermark', '浮水印模式：點擊位置放置文字');
+
+        document.getElementById('brush-size').oninput = (e) => state.brushSize = parseInt(e.target.value);
+
+        let compareTimer = null;
+        let isLongPress = false;
+
+        canvas.onmousedown = (e) => {
+            if (state.mode === 'idle') {
+                compareTimer = setTimeout(() => {
+                    isLongPress = true;
+                    render(state.baseImg);
+                    modeInfo.innerText = "對比原圖中...";
+                    modeInfo.style.display = 'block';
+                }, 250);
+                return;
+            }
+
+            const pos = getCoord(e);
+            state.isDrawing = true;
+
+            if (state.mode === 'chromakey') {
+                removeColorAt(pos.realX, pos.realY);
+                commit("顏色去背");
+                setMode('idle');
+            } else if (state.mode === 'watermark') {
+                addWatermarkAt(pos.realX, pos.realY);
+                commit("放置浮水印");
+                setMode('idle');
+            } else if (state.mode === 'crop') {
+                state.startX = pos.cssX;
+                state.startY = pos.cssY;
+                cropOverlay.style.display = 'block';
+                cropOverlay.style.left = pos.cssX + 'px';
+                cropOverlay.style.top = pos.cssY + 'px';
+                cropOverlay.style.width = '0px';
+                cropOverlay.style.height = '0px';
+            }
+        };
+
+        window.onmousemove = (e) => {
+            if (!state.isDrawing) return;
+            const pos = getCoord(e);
+
+            if (state.mode === 'crop') {
+                const w = pos.cssX - state.startX;
+                const h = pos.cssY - state.startY;
+                cropOverlay.style.width = Math.abs(w) + 'px';
+                cropOverlay.style.height = Math.abs(h) + 'px';
+                cropOverlay.style.left = (w > 0 ? state.startX : pos.cssX) + 'px';
+                cropOverlay.style.top = (h > 0 ? state.startY : pos.cssY) + 'px';
+            }
+        };
+
+        window.onmouseup = (e) => {
+            clearTimeout(compareTimer);
+            if (isLongPress) {
+                render(state.currentImg);
+                modeInfo.style.display = 'none';
+                isLongPress = false;
+            }
+
+            if (!state.isDrawing) return;
+            state.isDrawing = false;
+
+            if (state.mode === 'crop') {
+                executeCrop();
+            }
+        };
+
+        function removeColorAt(x, y) {
+            const idata = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const d = idata.data;
+            const targetIdx = (Math.floor(y) * canvas.width + Math.floor(x)) * 4;
+            const tr = d[targetIdx], tg = d[targetIdx+1], tb = d[targetIdx+2];
+            for(let i = 0; i < d.length; i += 4) {
+                const diff = Math.sqrt(Math.pow(d[i]-tr,2)+Math.pow(d[i+1]-tg,2)+Math.pow(d[i+2]-tb,2));
+                if(diff < 45) d[i+3] = 0;
+            }
+            ctx.putImageData(idata, 0, 0);
+        }
+
+        function addWatermarkAt(x, y) {
+            const text = document.getElementById('watermark-text').value || "WORKSHOP";
+            const color = document.getElementById('watermark-color').value;
+            ctx.font = `bold ${state.brushSize}px Inter, sans-serif`;
+            ctx.fillStyle = color;
+            ctx.textAlign = 'center';
+            ctx.fillText(text, x, y);
+        }
+
+        function executeCrop() {
+            const crect = canvas.getBoundingClientRect();
+            const orect = cropOverlay.getBoundingClientRect();
+            const scaleX = canvas.width / crect.width;
+            const scaleY = canvas.height / crect.height;
+            const x = (orect.left - crect.left) * scaleX;
+            const y = (orect.top - crect.top) * scaleY;
+            const w = orect.width * scaleX;
+            const h = orect.height * scaleY;
+            if (w < 10 || h < 10) return;
+            const temp = document.createElement('canvas');
+            temp.width = w; temp.height = h;
+            temp.getContext('2d').drawImage(canvas, x, y, w, h, 0, 0, w, h);
+            const ni = new Image();
+            ni.onload = () => {
+                render(ni);
+                commit("影像裁切");
+                setMode('idle');
+                modeInfo.style.display = 'none';
+                cropOverlay.style.display = 'none';
+            };
+            ni.src = temp.toDataURL();
+        }
+
+        // 處理基礎調整
+        function applyBaseFilters() {
+            // 從 currentImg (上一步提交的影像) 重新渲染
+            render(state.currentImg);
+            const idata = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const d = idata.data;
+            const b = state.settings.brightness / 100;
+            const c = state.settings.contrast / 100;
+            const t = state.settings.temp;
+            for(let i = 0; i < d.length; i += 4) {
+                for(let j = 0; j < 3; j++) d[i+j] = ((d[i+j]/255-0.5)*c+0.5)*255*b;
+                d[i] += t; d[i+2] -= t;
+            }
+            ctx.putImageData(idata, 0, 0);
+        }
+
+        ['bright', 'contrast', 'temp'].forEach(k => {
+            const el = document.getElementById(`adj-${k}`);
+            el.oninput = () => {
+                const val = parseInt(el.value);
+                state.settings[k === 'bright' ? 'brightness' : k === 'contrast' ? 'contrast' : 'temp'] = val;
+                document.getElementById(`v-${k}`).innerText = val;
+                applyBaseFilters();
+            };
+            el.onchange = () => commit(`調整基礎參數`);
+        });
+
+        // 修正後的復原邏輯
+        document.getElementById('btn-undo').onclick = () => {
+            // 必須保證歷史紀錄至少有 1 筆
+            if (state.history.length > 1) {
+                // 移除當前最新的那一筆
+                state.history.pop();
+                // 取得移除後的最末位作為當前影像
+                const lastNode = state.history[state.history.length - 1];
+                const img = new Image();
+                img.onload = () => {
+                    state.currentImg = img;
+                    state.settings = { ...lastNode.settings };
+                    // 同步滑桿 UI
+                    document.getElementById('adj-bright').value = state.settings.brightness;
+                    document.getElementById('adj-contrast').value = state.settings.contrast;
+                    document.getElementById('adj-temp').value = state.settings.temp;
+                    document.getElementById('v-bright').innerText = state.settings.brightness;
+                    document.getElementById('v-contrast').innerText = state.settings.contrast;
+                    document.getElementById('v-temp').innerText = state.settings.temp;
+                    render(img);
+                };
+                img.src = lastNode.src;
+            } else {
+                // 如果只剩一筆，就不再 pop，保持當前狀態
+                console.log("已到達最初狀態");
+            }
+            setMode('idle');
+            updateHistoryUI();
+        };
+
+        document.getElementById('btn-reset').onclick = () => {
+            render(state.baseImg);
+            state.history = [];
+            state.settings = { brightness: 100, contrast: 100, temp: 0 };
+            // 更新滑桿數值
+            document.getElementById('adj-bright').value = 100;
+            document.getElementById('adj-contrast').value = 100;
+            document.getElementById('adj-temp').value = 0;
+            document.getElementById('v-bright').innerText = 100;
+            document.getElementById('v-contrast').innerText = 100;
+            document.getElementById('v-temp').innerText = 0;
+            commit("手動全部重置");
+            setMode('idle');
+        };
+
+        document.getElementById('btn-download').onclick = () => {
+            const link = document.createElement('a');
+            link.download = `EXPORT_${Date.now()}.png`;
+            link.href = canvas.toDataURL();
+            link.click();
+        };
+
+        document.getElementById('drop-zone').onclick = () => document.getElementById('upload-input').click();
+    </script>
+</body>
+</html>
